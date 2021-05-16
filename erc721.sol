@@ -449,7 +449,7 @@ contract ERC721Token is ERC721, ERC721Enumerable, ERC721URIStorage {
         _;
     }
 
-    constructor() ERC721("CHAIR NFT", "CNFT") {
+    constructor() ERC721("CACA NFT", "CACANFT") {
         wards[msg.sender] = 1;
     }
     
