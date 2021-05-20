@@ -449,7 +449,7 @@ contract ERC721Token is ERC721, ERC721Enumerable, ERC721URIStorage {
         _;
     }
 
-    constructor() ERC721("CACA NFT", "CACANFT") {
+    constructor() ERC721("BNCH NFT", "BNCHNFT") {
         wards[msg.sender] = 1;
     }
     
@@ -458,6 +458,7 @@ contract ERC721Token is ERC721, ERC721Enumerable, ERC721URIStorage {
     }
 
     function awardItem(address player, string memory _tokenURI) external auth returns (uint256) {
+        require(player != address(0), "player address cannot be 0");
         _tokenIds.increment();
         uint256 newItemId = _tokenIds.current();
         _mint(player, newItemId);

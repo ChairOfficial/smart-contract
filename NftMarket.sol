@@ -53,7 +53,7 @@ contract Owned {
 contract NftMarket is Owned {
     address public nftAsset;
     address public abcToken;
-    string public constant version = "2.0.2";
+    string public constant version = "2.0.3";
     address public revenueRecipient;
     uint256 public constant mintFee = 10 * 1e8;
     uint256 public constant transferFee = 5;
@@ -113,6 +113,12 @@ contract NftMarket is Owned {
         address _abcToken,
         address _revenueRecipient
     ) {
+        require(_nftAsset != address(0), "_nftAsset address cannot be 0");
+        require(_abcToken != address(0), "_abcToken address cannot be 0");
+        require(
+            _revenueRecipient != address(0),
+            "_revenueRecipient address cannot be 0"
+        );
         nftAsset = _nftAsset;
         abcToken = _abcToken;
         revenueRecipient = _revenueRecipient;
@@ -186,8 +192,8 @@ contract NftMarket is Owned {
         require(offer.isForSale, "nft not actually for sale");
         require(!offer.isBid, "nft is auction mode");
 
-        uint256 share1 = (offer.minValue * transferFee) / 100; 
-        uint256 share2 = (offer.minValue * royalty[tokenID].royalty) / 100; 
+        uint256 share1 = (offer.minValue * transferFee) / 100;
+        uint256 share2 = (offer.minValue * royalty[tokenID].royalty) / 100;
 
         if (offer.paymentToken != address(0)) {
             ERC20Like(offer.paymentToken).transferFrom(
@@ -211,8 +217,8 @@ contract NftMarket is Owned {
                 "Sorry, your credit is running low"
             );
             payable(revenueRecipient).transfer(share1);
-            payable(royalty[tokenID].originator).transfer(share2); 
-            payable(offer.seller).transfer(offer.minValue - share1 - share2); 
+            payable(royalty[tokenID].originator).transfer(share2);
+            payable(offer.seller).transfer(offer.minValue - share1 - share2);
         }
         ERC721Like(nftAsset).transferFrom(address(this), msg.sender, tokenID);
         emit Bought(
@@ -225,7 +231,7 @@ contract NftMarket is Owned {
         delete nftOfferedForSale[tokenID];
     }
 
-    function enterBidForNft(uint256 tokenID, uint256 amount) public payable {
+    function enterBidForNft(uint256 tokenID, uint256 amount) external payable {
         Offer memory offer = nftOfferedForSale[tokenID];
         require(offer.isForSale, "nft not actually for sale");
         require(offer.isBid, "nft must beauction mode");
@@ -251,9 +257,15 @@ contract NftMarket is Owned {
                 address(this),
                 amount
             );
-            nftBids[tokenID] = Bid(tokenID, msg.sender, amount);
+            nftBids[tokenID] = Bid(
+                tokenID,
+                msg.sender,
+                amount + offerBalances[tokenID][msg.sender]
+            );
             emit BidEntered(tokenID, msg.sender, amount);
+            offerBalances[tokenID][msg.sender] += amount;
         } else {
+			require(msg.value==amount,"msg.value must equal to amount!");
             require(
                 msg.value + offerBalances[tokenID][msg.sender] >=
                     offer.minValue,
@@ -263,10 +275,14 @@ contract NftMarket is Owned {
                 msg.value + offerBalances[tokenID][msg.sender] > bid.value,
                 "This quotation is less than the current quotation"
             );
-            nftBids[tokenID] = Bid(tokenID, msg.sender, msg.value);
+            nftBids[tokenID] = Bid(
+                tokenID,
+                msg.sender,
+                msg.value + offerBalances[tokenID][msg.sender]
+            );
             emit BidEntered(tokenID, msg.sender, msg.value);
+            offerBalances[tokenID][msg.sender] += msg.value;
         }
-        offerBalances[tokenID][msg.sender] += amount;
     }
 
     function deal(uint256 tokenID) external {
@@ -278,32 +294,38 @@ contract NftMarket is Owned {
         Bid memory bid = nftBids[tokenID];
 
         if (bid.value >= offer.minValue) {
-            uint256 share1 = (bid.value * transferFee) / 100; 
-            uint256 share2 = (offer.minValue * royalty[tokenID].royalty) / 100; 
-            uint256 share3 = 0; 
+            uint256 share1 = (bid.value * transferFee) / 100;
+            uint256 share2 = (offer.minValue * royalty[tokenID].royalty) / 100;
+            uint256 share3 = 0;
             uint256 totalBid = 0;
 
-            for (uint256 i = 0; i < bidders[tokenID].length - 1; i++) {
-                totalBid += offerBalances[tokenID][bidders[tokenID][i]];
+            for (uint256 i = 0; i < bidders[tokenID].length; i++) {
+                if (bid.bidder != bidders[tokenID][i]) {
+                    totalBid += offerBalances[tokenID][bidders[tokenID][i]];
+                }
             }
 
             if (offer.paymentToken != address(0)) {
-                for (uint256 i = 0; i < bidders[tokenID].length - 1; i++) {
-                    uint256 tempC =
-                        (((bid.value * offer.reward) / 100) *
-                            offerBalances[tokenID][bidders[tokenID][i]]) /
-                            totalBid;
-                    ERC20Like(offer.paymentToken).transfer(
-                        bidders[tokenID][i],
-                        tempC
-                    );
-                    share3 += tempC;
-                    ERC20Like(offer.paymentToken).transfer(
-                        bidders[tokenID][i],
-                        offerBalances[tokenID][bidders[tokenID][i]]
-                    );
-                    offerBalances[tokenID][bidders[tokenID][i]] = 0;
-                    delete bade[tokenID][bidders[tokenID][i]];
+                for (uint256 i = 0; i < bidders[tokenID].length; i++) {
+                    if (bid.bidder != bidders[tokenID][i]) {
+                        uint256 tempC =
+                            (bid.value *
+                                offer.reward *
+                                offerBalances[tokenID][bidders[tokenID][i]]) /
+                                totalBid /
+                                100;
+                        ERC20Like(offer.paymentToken).transfer(
+                            bidders[tokenID][i],
+                            tempC
+                        );
+                        share3 += tempC;
+                        ERC20Like(offer.paymentToken).transfer(
+                            bidders[tokenID][i],
+                            offerBalances[tokenID][bidders[tokenID][i]]
+                        );
+                        offerBalances[tokenID][bidders[tokenID][i]] = 0;
+                        delete bade[tokenID][bidders[tokenID][i]];
+                    }
                 }
 
                 ERC20Like(offer.paymentToken).transfer(
@@ -319,18 +341,22 @@ contract NftMarket is Owned {
                     bid.value - share1 - share2 - share3
                 );
             } else {
-                for (uint256 i = 0; i < bidders[tokenID].length - 1; i++) {
-                    uint256 tempC =
-                        (((bid.value * offer.reward) / 100) *
-                            offerBalances[tokenID][bidders[tokenID][i]]) /
-                            totalBid;
-                    payable(bidders[tokenID][i]).transfer(tempC);
-                    share3 += tempC;
-                    payable(bidders[tokenID][i]).transfer(
-                        offerBalances[tokenID][bidders[tokenID][i]]
-                    );
-                    offerBalances[tokenID][bidders[tokenID][i]] = 0;
-                    delete bade[tokenID][bidders[tokenID][i]];
+                for (uint256 i = 0; i < bidders[tokenID].length; i++) {
+                    if (bid.bidder != bidders[tokenID][i]) {
+                        uint256 tempC =
+                            (bid.value *
+                                offer.reward *
+                                offerBalances[tokenID][bidders[tokenID][i]]) /
+                                totalBid /
+                                100;
+                        payable(bidders[tokenID][i]).transfer(tempC);
+                        share3 += tempC;
+                        payable(bidders[tokenID][i]).transfer(
+                            offerBalances[tokenID][bidders[tokenID][i]]
+                        );
+                        offerBalances[tokenID][bidders[tokenID][i]] = 0;
+                        delete bade[tokenID][bidders[tokenID][i]];
+                    }
                 }
 
                 payable(revenueRecipient).transfer(share1);
