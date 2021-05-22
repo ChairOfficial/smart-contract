@@ -53,7 +53,7 @@ contract Owned {
 contract NftMarket is Owned {
     address public nftAsset;
     address public abcToken;
-    string public constant version = "2.0.3";
+    string public constant version = "2.0.4";
     address public revenueRecipient;
     uint256 public constant mintFee = 10 * 1e8;
     uint256 public constant transferFee = 5;
@@ -108,6 +108,14 @@ contract NftMarket is Owned {
     event NoLongerForSale(uint256 indexed tokenID);
     event AuctionPass(uint256 indexed tokenID);
 
+    bool private _mutex;
+    modifier _lock_() {
+        require(!_mutex, "reentry");
+        _mutex = true;
+        _;
+        _mutex = false;
+    }
+
     constructor(
         address _nftAsset,
         address _abcToken,
@@ -126,6 +134,7 @@ contract NftMarket is Owned {
 
     function NewNft(string memory _tokenURI, uint256 _royalty)
         external
+        _lock_
         returns (uint256)
     {
         require(_royalty < 30, "Excessive copyright fees");
@@ -155,7 +164,7 @@ contract NftMarket is Owned {
         uint256 endTime,
         address paymentToken,
         uint256 reward
-    ) external {
+    ) external _lock_ {
         require(endTime <= block.timestamp + 30 days, "Maximum time exceeded");
         require(endTime > block.timestamp + 5 minutes, "Below minimum time");
         require(
@@ -176,7 +185,7 @@ contract NftMarket is Owned {
         emit Offered(tokenID, minSalePrice, paymentToken);
     }
 
-    function noLongerForSale(uint256 tokenID) external {
+    function noLongerForSale(uint256 tokenID) external _lock_ {
         Offer memory offer = nftOfferedForSale[tokenID];
         require(offer.isForSale, "nft not actually for sale");
         require(msg.sender == offer.seller, "Only the seller can operate");
@@ -187,7 +196,7 @@ contract NftMarket is Owned {
         emit NoLongerForSale(tokenID);
     }
 
-    function buy(uint256 tokenID) external payable {
+    function buy(uint256 tokenID) external payable _lock_ {
         Offer memory offer = nftOfferedForSale[tokenID];
         require(offer.isForSale, "nft not actually for sale");
         require(!offer.isBid, "nft is auction mode");
@@ -231,7 +240,11 @@ contract NftMarket is Owned {
         delete nftOfferedForSale[tokenID];
     }
 
-    function enterBidForNft(uint256 tokenID, uint256 amount) external payable {
+    function enterBidForNft(uint256 tokenID, uint256 amount)
+        external
+        payable
+        _lock_
+    {
         Offer memory offer = nftOfferedForSale[tokenID];
         require(offer.isForSale, "nft not actually for sale");
         require(offer.isBid, "nft must beauction mode");
@@ -265,7 +278,6 @@ contract NftMarket is Owned {
             emit BidEntered(tokenID, msg.sender, amount);
             offerBalances[tokenID][msg.sender] += amount;
         } else {
-			require(msg.value==amount,"msg.value must equal to amount!");
             require(
                 msg.value + offerBalances[tokenID][msg.sender] >=
                     offer.minValue,
@@ -285,7 +297,7 @@ contract NftMarket is Owned {
         }
     }
 
-    function deal(uint256 tokenID) external {
+    function deal(uint256 tokenID) external _lock_ {
         Offer memory offer = nftOfferedForSale[tokenID];
         require(offer.isForSale, "nft not actually for sale");
         require(offer.isBid, "must be auction mode");
