@@ -53,7 +53,7 @@ contract Owned {
 contract NftMarket is Owned {
     address public nftAsset;
     address public abcToken;
-    string public constant version = "2.0.4";
+    string public constant version = "2.0.5";
     address public revenueRecipient;
     uint256 public constant mintFee = 10 * 1e8;
     uint256 public constant transferFee = 5;
@@ -307,7 +307,7 @@ contract NftMarket is Owned {
 
         if (bid.value >= offer.minValue) {
             uint256 share1 = (bid.value * transferFee) / 100;
-            uint256 share2 = (offer.minValue * royalty[tokenID].royalty) / 100;
+            uint256 share2 = (bid.value * royalty[tokenID].royalty) / 100;
             uint256 share3 = 0;
             uint256 totalBid = 0;
 
